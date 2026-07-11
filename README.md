@@ -1,4 +1,4 @@
-p# CursorForge
+# CursorForge
 
 Add additional sizes to installed Xcursor themes on Linux.
 
