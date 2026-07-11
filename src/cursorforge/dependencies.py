@@ -8,13 +8,7 @@ from cursorforge.models import DependencyStatus
 
 log = logging.getLogger(__name__)
 
-_DEPS: list[tuple[str, str]] = [
-    ("xcur2png", "xcur2png"),
-    ("xcursorgen", "xorg-xcursorgen"),
-    ("magick", "imagemagick"),
-]
-
-PACMAN_COMMAND = "sudo pacman -S xcur2png xorg-xcursorgen imagemagick"
+_DEPS: list[str] = ["xcur2png", "xcursorgen", "magick"]
 
 
 def _get_version(name: str) -> str | None:
@@ -33,7 +27,7 @@ def _get_version(name: str) -> str | None:
 
 def check_dependencies() -> list[DependencyStatus]:
     results: list[DependencyStatus] = []
-    for name, pkg in _DEPS:
+    for name in _DEPS:
         path = shutil.which(name)
         available = path is not None
         version = _get_version(name) if available else None
@@ -43,10 +37,14 @@ def check_dependencies() -> list[DependencyStatus]:
             available=available,
             version=version,
             path=path,
-            suggested_package=pkg,
+            suggested_package=name,  # actual package name resolved per-distro in distro.py
         ))
     return results
 
 
 def all_available(statuses: list[DependencyStatus]) -> bool:
     return all(s.available for s in statuses)
+
+
+def missing_names(statuses: list[DependencyStatus]) -> list[str]:
+    return [s.name for s in statuses if not s.available]

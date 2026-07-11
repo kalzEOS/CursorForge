@@ -4,20 +4,22 @@ import logging
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
+    QButtonGroup,
     QGroupBox,
     QLabel,
     QLineEdit,
     QMainWindow,
-    QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QRadioButton,
     QSizePolicy,
     QVBoxLayout,
+    QHBoxLayout,
     QWidget,
 )
 
 from cursorforge.models import CursorTheme
-from cursorforge.paths import OUTPUT_BASE
+from cursorforge.paths import SYSTEM_OUTPUT_BASE, USER_OUTPUT_BASE
 from cursorforge.ui.size_panel import SizePanel
 from cursorforge.ui.theme_panel import ThemePanel
 
@@ -30,15 +32,14 @@ class _QTextEditHandler(logging.Handler):
         self._widget = widget
 
     def emit(self, record: logging.LogRecord) -> None:
-        msg = self.format(record)
-        self._widget.appendPlainText(msg)
+        self._widget.appendPlainText(self.format(record))
 
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
         self.setWindowTitle("CursorForge")
-        self.setMinimumSize(700, 600)
+        self.setMinimumSize(700, 640)
         self._current_theme: CursorTheme | None = None
         self._build_ui()
         self._setup_logging()
@@ -63,15 +64,50 @@ class MainWindow(QMainWindow):
         output_group = QGroupBox("Output")
         output_layout = QVBoxLayout(output_group)
 
+        # Theme name
+        name_row = QHBoxLayout()
+        name_row.addWidget(QLabel("Theme name:"))
         self._name_edit = QLineEdit()
-        self._name_edit.setPlaceholderText("Output theme name")
+        self._name_edit.setPlaceholderText("e.g. MyTheme-Multi")
         self._name_edit.textChanged.connect(self._refresh_output_preview)
-        output_layout.addWidget(self._name_edit)
+        name_row.addWidget(self._name_edit)
+        output_layout.addLayout(name_row)
 
+        # Install location radio buttons
+        location_row = QHBoxLayout()
+        location_row.addWidget(QLabel("Install to:"))
+
+        self._loc_user = QRadioButton("User only  (~/.local/share/icons)")
+        self._loc_system = QRadioButton("System  (/usr/share/icons)  — requires root")
+        self._loc_user.setChecked(True)
+
+        self._loc_group = QButtonGroup(self)
+        self._loc_group.addButton(self._loc_user)
+        self._loc_group.addButton(self._loc_system)
+        self._loc_group.buttonClicked.connect(self._on_location_changed)
+
+        location_row.addWidget(self._loc_user)
+        location_row.addWidget(self._loc_system)
+        location_row.addStretch()
+        output_layout.addLayout(location_row)
+
+        # System install warning
+        self._system_warning = QLabel(
+            "Warning: installing to /usr/share/icons requires root privileges. "
+            "CursorForge will use pkexec to request elevation at build time."
+        )
+        self._system_warning.setWordWrap(True)
+        self._system_warning.setStyleSheet("color: orange;")
+        self._system_warning.hide()
+        output_layout.addWidget(self._system_warning)
+
+        # Preview
         self._preview_label = QLabel()
+        self._preview_label.setWordWrap(True)
         self._preview_label.setStyleSheet("color: gray;")
         output_layout.addWidget(self._preview_label)
 
+        # Build button
         self._build_btn = QPushButton("Build Theme")
         self._build_btn.setEnabled(False)
         self._build_btn.setToolTip("Theme building will be available in Phase 2.")
@@ -83,13 +119,11 @@ class MainWindow(QMainWindow):
         # --- Log section ---
         log_group = QGroupBox("Log")
         log_layout = QVBoxLayout(log_group)
-
         self._log_view = QPlainTextEdit()
         self._log_view.setReadOnly(True)
         self._log_view.setMaximumBlockCount(2000)
-        self._log_view.setMinimumHeight(120)
+        self._log_view.setMinimumHeight(110)
         log_layout.addWidget(self._log_view)
-
         root.addWidget(log_group)
 
     def _setup_logging(self) -> None:
@@ -102,9 +136,12 @@ class MainWindow(QMainWindow):
 
     def _on_theme_ready(self, theme: CursorTheme, warning: str | None) -> None:
         self._current_theme = theme
-        default_name = f"{theme.directory_name}-Multi"
-        self._name_edit.setText(default_name)
+        self._name_edit.setText(f"{theme.directory_name}-Multi")
         self._size_panel.set_existing_sizes(theme.existing_sizes)
+        self._refresh_output_preview()
+
+    def _on_location_changed(self) -> None:
+        self._system_warning.setVisible(self._loc_system.isChecked())
         self._refresh_output_preview()
 
     def _refresh_output_preview(self) -> None:
@@ -117,15 +154,20 @@ class MainWindow(QMainWindow):
             self._preview_label.setText(
                 "<font color='red'>Name must not contain path separators.</font>"
             )
-            self._preview_label.setTextFormat(
-                Qt.TextFormat.RichText
-            )
+            self._preview_label.setTextFormat(Qt.TextFormat.RichText)
             return
 
-        dest = OUTPUT_BASE / name
+        base = SYSTEM_OUTPUT_BASE if self._loc_system.isChecked() else USER_OUTPUT_BASE
+        dest = base / name
         new_sizes = self._size_panel.new_sizes()
-        sizes_str = ", ".join(str(s) for s in new_sizes) if new_sizes else "none"
+        sizes_str = ", ".join(str(s) for s in new_sizes) if new_sizes else "none selected"
         self._preview_label.setText(
             f"Destination: {dest}\n"
             f"Sizes to generate: {sizes_str}"
         )
+
+    def output_name(self) -> str:
+        return self._name_edit.text().strip()
+
+    def install_to_system(self) -> bool:
+        return self._loc_system.isChecked()
