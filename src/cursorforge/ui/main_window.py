@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import shutil
 import subprocess
+import tempfile
 from datetime import datetime
 from pathlib import Path
 import sys
@@ -105,14 +106,29 @@ class _PrivilegedBuildWorker(QRunnable):
         self.signals = _BuildSignals()
 
     def run(self) -> None:
-        command = build_privileged_command(
-            sys.executable,
-            self._theme.cursor_path,
-            self._theme.directory_name,
-            self._output_path,
-            self._new_sizes,
-        )
+        tmp_pkg_dir = Path(tempfile.mkdtemp(prefix="cursorforge_root_"))
+        process = None
+        result: BuildResult | None = None
+        output_lines: list[str] = []
+        returncode = 1
+        # pkexec strips environment variables, so PYTHONPATH is never inherited
+        # by the privileged helper. To ensure cursorforge is importable as root
+        # (whether we're running from an AppImage, from source, or installed),
+        # copy the package to a plain /tmp directory that root can read and pass
+        # PYTHONPATH explicitly via `pkexec env PYTHONPATH=...`.
+        import cursorforge as _cf
+        shutil.copytree(str(Path(_cf.__file__).parent), str(tmp_pkg_dir / "cursorforge"))
+
+        python_exe = shutil.which("python3") or "python3"
         try:
+            command = build_privileged_command(
+                python_exe,
+                self._theme.cursor_path,
+                self._theme.directory_name,
+                self._output_path,
+                self._new_sizes,
+                pythonpath=str(tmp_pkg_dir),
+            )
             process = subprocess.Popen(
                 command,
                 stdout=subprocess.PIPE,
@@ -120,6 +136,24 @@ class _PrivilegedBuildWorker(QRunnable):
                 text=True,
                 bufsize=1,
             )
+            assert process.stdout is not None
+            for raw_line in process.stdout:
+                line = raw_line.rstrip("\n")
+                parsed = parse_output_line(line)
+                if parsed is None:
+                    if line.strip():
+                        output_lines.append(line.strip())
+                        log.debug("pkexec helper: %s", line)
+                    continue
+
+                kind, payload = parsed
+                if kind == "progress":
+                    message, current, total = cast(tuple[str, int, int], payload)
+                    self.signals.progress.emit(message, current, total)
+                elif kind == "result":
+                    result = cast(BuildResult, payload)
+
+            returncode = process.wait()
         except FileNotFoundError as exc:
             log.exception("privileged build helper could not start")
             result = BuildResult(
@@ -127,29 +161,16 @@ class _PrivilegedBuildWorker(QRunnable):
                 output_path=self._output_path,
                 errors=[str(exc)],
             )
-            self.signals.finished.emit(result)
-            return
+        except Exception as exc:  # pragma: no cover - defensive catch for privileged path
+            log.exception("privileged build helper crashed")
+            result = BuildResult(
+                success=False,
+                output_path=self._output_path,
+                errors=[str(exc)],
+            )
+        finally:
+            shutil.rmtree(tmp_pkg_dir, ignore_errors=True)
 
-        result: BuildResult | None = None
-        output_lines: list[str] = []
-        assert process.stdout is not None
-        for raw_line in process.stdout:
-            line = raw_line.rstrip("\n")
-            parsed = parse_output_line(line)
-            if parsed is None:
-                if line.strip():
-                    output_lines.append(line.strip())
-                    log.debug("pkexec helper: %s", line)
-                continue
-
-            kind, payload = parsed
-            if kind == "progress":
-                message, current, total = cast(tuple[str, int, int], payload)
-                self.signals.progress.emit(message, current, total)
-            elif kind == "result":
-                result = cast(BuildResult, payload)
-
-        returncode = process.wait()
         if result is None:
             errors = output_lines[-3:] if output_lines else []
             if not errors:
@@ -214,7 +235,7 @@ class MainWindow(QMainWindow):
 
         # --- Output section ---
         output_group = QGroupBox("Output")
-        output_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        output_group.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
         output_layout = QVBoxLayout(output_group)
 
         # Theme name
@@ -242,8 +263,8 @@ class MainWindow(QMainWindow):
 
         indent = QWidget()
         indent_layout = QVBoxLayout(indent)
-        indent_layout.setContentsMargins(16, 0, 0, 0)
-        indent_layout.setSpacing(2)
+        indent_layout.setContentsMargins(16, 4, 0, 4)
+        indent_layout.setSpacing(4)
         indent_layout.addWidget(self._loc_user)
         indent_layout.addWidget(self._loc_system)
         indent_layout.addWidget(self._loc_custom)
@@ -261,6 +282,10 @@ class MainWindow(QMainWindow):
         custom_dir_layout.addWidget(self._custom_dir_edit)
         custom_dir_layout.addWidget(self._browse_btn)
         self._custom_dir_row.hide()
+        # Retain layout space when hidden so the section height never shifts.
+        sp_cdr = self._custom_dir_row.sizePolicy()
+        sp_cdr.setRetainSizeWhenHidden(True)
+        self._custom_dir_row.setSizePolicy(sp_cdr)
         output_layout.addWidget(self._custom_dir_row)
 
         # System install warning
@@ -271,6 +296,9 @@ class MainWindow(QMainWindow):
         self._system_warning.setWordWrap(True)
         self._system_warning.setStyleSheet("color: orange;")
         self._system_warning.hide()
+        sp_warn = self._system_warning.sizePolicy()
+        sp_warn.setRetainSizeWhenHidden(True)
+        self._system_warning.setSizePolicy(sp_warn)
         output_layout.addWidget(self._system_warning)
 
         # Destination preview
