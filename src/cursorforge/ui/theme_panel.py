@@ -83,7 +83,7 @@ class ThemePanel(QGroupBox):
         # info labels
         self._path_label = QLabel()
         self._path_label.setWordWrap(True)
-        self._source_label = QLabel()
+        self._type_label = QLabel()
         self._sizes_label = QLabel()
 
         self._warning_label = QLabel()
@@ -94,8 +94,8 @@ class ThemePanel(QGroupBox):
         self._inspect_status = QLabel()
         self._inspect_status.setStyleSheet("color: gray;")
 
+        root.addWidget(self._type_label)
         root.addWidget(self._path_label)
-        root.addWidget(self._source_label)
         root.addWidget(self._sizes_label)
         root.addWidget(self._warning_label)
         root.addWidget(self._inspect_status)
@@ -111,10 +111,10 @@ class ThemePanel(QGroupBox):
         self._combo.blockSignals(False)
         self._themes.clear()
         self._path_label.clear()
-        self._source_label.clear()
+        self._type_label.clear()
         self._sizes_label.clear()
         self._warning_label.hide()
-        self._inspect_status.setText("Scanning themes…")
+        self._inspect_status.setText("Scanning themes...")
 
         scanner = ThemeScanner()
         themes = scanner.scan()
@@ -138,8 +138,8 @@ class ThemePanel(QGroupBox):
             return
         theme = self._themes[index]
         self._path_label.setText(f"Path: {theme.path}")
-        self._source_label.setText(f"Location: {theme.source_type.label()}")
-        self._sizes_label.setText("Existing sizes: inspecting…")
+        self._type_label.setText(f"Location: {theme.source_type.label()}")
+        self._sizes_label.setText("Existing sizes: inspecting...")
         self._warning_label.hide()
         self._inspect_status.setText("")
 
@@ -153,7 +153,7 @@ class ThemePanel(QGroupBox):
         sizes_str = (
             ", ".join(str(s) for s in updated.existing_sizes)
             if updated.existing_sizes
-            else "unknown (xcur2png unavailable?)"
+            else "unknown — is xcur2png installed?"
         )
         self._sizes_label.setText(f"Existing sizes: {sizes_str}")
 
@@ -166,7 +166,7 @@ class ThemePanel(QGroupBox):
         if updated.failed_inspections:
             self._inspect_status.setText(
                 f"Inspected {updated.inspected_files} cursor(s), "
-                f"{updated.failed_inspections} failed."
+                f"{updated.failed_inspections} failed to read."
             )
         else:
             self._inspect_status.setText(

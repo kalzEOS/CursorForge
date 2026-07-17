@@ -12,9 +12,9 @@ class ThemeSource(Enum):
 
     def label(self) -> str:
         labels = {
-            ThemeSource.USER_ICONS: "User (~/.icons)",
-            ThemeSource.USER_LOCAL_SHARE: "User (~/.local/share/icons)",
-            ThemeSource.SYSTEM: "System (/usr/share/icons)",
+            ThemeSource.USER_ICONS: "User install",
+            ThemeSource.USER_LOCAL_SHARE: "User install",
+            ThemeSource.SYSTEM: "System install",
         }
         return labels[self]
 
