@@ -60,6 +60,7 @@ class ThemePanel(QGroupBox):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__("Cursor Theme", parent)
         self._themes: list[CursorTheme] = []
+        self._current_inspect_path: object = None
         self._build_ui()
         self.refresh()
 
@@ -143,6 +144,7 @@ class ThemePanel(QGroupBox):
         self._warning_label.hide()
         self._inspect_status.setText("")
 
+        self._current_inspect_path = theme.path
         worker = _InspectWorker(theme)
         worker.signals.done.connect(self._on_inspect_done)
         worker.signals.error.connect(self._on_inspect_error)
@@ -150,6 +152,8 @@ class ThemePanel(QGroupBox):
 
     def _on_inspect_done(self, result: tuple[CursorTheme, str | None]) -> None:
         updated, warning = result
+        if updated.path != self._current_inspect_path:
+            return
         sizes_str = (
             ", ".join(str(s) for s in updated.existing_sizes)
             if updated.existing_sizes

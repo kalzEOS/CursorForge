@@ -5,7 +5,7 @@ import subprocess
 from pathlib import Path
 
 from cursorforge.models import CursorFrame, ExtractedCursor
-from cursorforge.scaler import ImageScaler, pick_source_frame, scale_hotspot
+from cursorforge.scaler import ImageScaler, scale_hotspot
 
 log = logging.getLogger(__name__)
 
@@ -40,21 +40,19 @@ class CursorCompiler:
             return False
 
         conf_path = work_dir / f"{extracted.original_path.name}_{target_size}.conf"
-        self._write_conf(conf_path, frames, scaled, target_size)
+        self._write_conf(conf_path, scaled, target_size)
 
         return self._run_xcursorgen(conf_path, out_path, timeout)
 
     def _write_conf(
         self,
         conf_path: Path,
-        original_frames: list[CursorFrame],
         scaled: list[tuple[CursorFrame, Path]],
         target_size: int,
     ) -> None:
         lines: list[str] = []
         for frame, png_path in scaled:
-            src = pick_source_frame(original_frames, target_size)
-            xhot, yhot = scale_hotspot(src.xhot, src.yhot, src.size, target_size)
+            xhot, yhot = scale_hotspot(frame.xhot, frame.yhot, frame.size, target_size)
             if frame.delay_ms > 0:
                 lines.append(f"{target_size} {xhot} {yhot} {png_path.name} {frame.delay_ms}")
             else:
@@ -105,9 +103,8 @@ class CursorCompiler:
                     new_size,
                 )
                 return False
-            src_frame = pick_source_frame(frames, new_size)
-            xhot, yhot = scale_hotspot(src_frame.xhot, src_frame.yhot, src_frame.size, new_size)
             for _frame, png_path in scaled:
+                xhot, yhot = scale_hotspot(_frame.xhot, _frame.yhot, _frame.size, new_size)
                 delay = _frame.delay_ms
                 if delay > 0:
                     conf_lines.append(f"{new_size} {xhot} {yhot} {png_path} {delay}")

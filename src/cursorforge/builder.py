@@ -63,8 +63,10 @@ class ThemeBuilder:
             result.errors.append(f"No cursor files found in {theme.cursor_path}")
             return result
 
+        if output_path.exists():
+            shutil.rmtree(output_path)
         out_cursors = output_path / "cursors"
-        out_cursors.mkdir(parents=True, exist_ok=True)
+        out_cursors.mkdir(parents=True)
 
         total = len(cursor_files)
         for i, entry in enumerate(cursor_files):
@@ -91,7 +93,7 @@ class ThemeBuilder:
         )
 
         result.sizes_added = new_sizes
-        result.success = result.cursors_failed == 0 or result.cursors_processed > 0
+        result.success = result.cursors_failed == 0 and result.cursors_processed > 0
         return result
 
     def _collect_cursor_files(self, cursors_dir: Path) -> list[Path]:
@@ -136,9 +138,10 @@ class ThemeBuilder:
             expected = existing_sizes | frozenset(truly_new)
             valid, missing = self._validator.validate(out_file, frozenset(expected))
             if not valid:
-                log.warning(
-                    "%s validated with missing sizes: %s", cursor_file.name, sorted(missing)
-                )
+                msg = f"{cursor_file.name} missing sizes after build: {sorted(missing)}"
+                log.warning(msg)
+                result.errors.append(msg)
+                return False
 
         return True
 

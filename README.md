@@ -86,6 +86,16 @@ the appropriate instructions for your system.
 
 ## Installation
 
+Prebuilt packages are published with each release on GitHub Releases. Download
+the one that matches your system:
+
+- Debian / Ubuntu / Linux Mint / Pop!_OS: `.deb`
+- Fedora / openSUSE / RPM-based distros: `.rpm`
+- Arch Linux: `.pkg.tar.zst`
+- Any Linux distribution: `.AppImage`
+
+If you prefer, you can also install from source with `uv`.
+
 ### Step 1 -- install uv
 
 CursorForge uses [uv](https://github.com/astral-sh/uv) for dependency
@@ -185,6 +195,8 @@ uv run cursorforge
 
 3. Check the sizes you want to add. You can also type custom sizes in the
    field at the bottom of the grid (for example: 18, 26, 100) and press Add.
+   The size panel also includes Select All, Clear Additions, and a BreezeX
+   preset for quickly choosing common sets.
 
 4. Enter a name for the output theme and choose where to install it:
    - User -- installs to `~/.local/share/icons` (no root required)
@@ -204,8 +216,6 @@ report an issue.
 
 ## Notes
 
-- The source theme is never modified. CursorForge always writes a new,
-  separate theme.
 - Animated cursors are fully supported. Each frame is scaled independently
   and the delay values are preserved.
 - Symlinks inside a cursor theme (used to point alternate cursor names to

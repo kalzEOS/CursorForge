@@ -1,0 +1,39 @@
+name: cursorforge
+version: "0.1.0"
+release: "1"
+arch: any
+platform: linux
+maintainer: "kalzEOS <kalzwayed@gmail.com>"
+description: Add extra sizes to installed Xcursor themes
+vendor: kalzEOS
+homepage: https://github.com/kalzEOS/CursorForge
+license: GPL-3.0-or-later
+
+# PYVER is exported by build-packages.sh to match the local Python version.
+contents:
+  - src: ../src/cursorforge/
+    dst: /usr/lib/python${PYVER}/site-packages/cursorforge/
+    type: tree
+
+  - src: bin/cursorforge
+    dst: /usr/bin/cursorforge
+    file_info:
+      mode: 0755
+
+  - src: cursorforge.desktop
+    dst: /usr/share/applications/cursorforge.desktop
+
+  - src: ../assets/cursorforge.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/cursorforge.svg
+
+  - src: ../LICENSE
+    dst: /usr/share/licenses/cursorforge/LICENSE
+
+overrides:
+  archlinux:
+    depends:
+      - python
+      - python-pyside6
+      - xcur2png
+      - xorg-xcursorgen
+      - imagemagick
