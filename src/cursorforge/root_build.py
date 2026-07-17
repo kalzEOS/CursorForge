@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+from json import JSONDecodeError
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +20,7 @@ def build_privileged_command(
     source_name: str,
     output_path: Path,
     new_sizes: list[int],
+    pythonpath: str | None = None,
 ) -> list[str]:
     cmd = [
         python_executable,
@@ -33,6 +35,8 @@ def build_privileged_command(
     ]
     for size in new_sizes:
         cmd.extend(["--new-size", str(size)])
+    if pythonpath:
+        return ["pkexec", "env", f"PYTHONPATH={pythonpath}", *cmd]
     return ["pkexec", *cmd]
 
 
@@ -80,7 +84,10 @@ def parse_output_line(line: str) -> tuple[str, object] | None:
             return None
         return "progress", (parts[3], current, total)
     if line.startswith(f"{RESULT_PREFIX}\t"):
-        payload = json.loads(line.split("\t", 1)[1])
+        try:
+            payload = json.loads(line.split("\t", 1)[1])
+        except JSONDecodeError:
+            return None
         return "result", deserialize_result(payload)
     return None
 
