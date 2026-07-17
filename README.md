@@ -86,13 +86,21 @@ the appropriate instructions for your system.
 
 ## Installation
 
-Prebuilt packages are published with each release on GitHub Releases. Download
-the one that matches your system:
+Prebuilt packages are published on the [GitHub Releases page](https://github.com/kalzEOS/CursorForge/releases).
+Download the artifact that matches your distribution:
 
-- Debian / Ubuntu / Linux Mint / Pop!_OS: `.deb`
-- Fedora / openSUSE / RPM-based distros: `.rpm`
-- Arch Linux: `.pkg.tar.zst`
+- Debian, Ubuntu, Linux Mint, Pop!_OS, and other Debian-based distros: `.deb`
+- Fedora, openSUSE, and other RPM-based distros: `.rpm`
+- Arch Linux and Arch-based distros like CachyOS, Manjaro, EndeavourOS, and Garuda: `.pkg.tar.zst`
 - Any Linux distribution: `.AppImage`
+
+For Arch Linux and Arch-based distros, install the downloaded package with:
+
+```bash
+sudo pacman -U ./CursorForge-<version>-x86_64.pkg.tar.zst
+```
+
+Replace `<version>` with the version number in the file you downloaded.
 
 If you prefer, you can also install from source with `uv`.
 

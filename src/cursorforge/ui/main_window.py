@@ -1,8 +1,12 @@
 from __future__ import annotations
 
 import logging
+import shutil
+import subprocess
 from datetime import datetime
 from pathlib import Path
+import sys
+from typing import cast
 
 from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, Signal
 from PySide6.QtWidgets import (
@@ -25,6 +29,7 @@ from PySide6.QtWidgets import (
 from cursorforge.builder import BuildResult, ThemeBuilder
 from cursorforge.models import CursorTheme
 from cursorforge.paths import SYSTEM_OUTPUT_BASE, USER_OUTPUT_BASE
+from cursorforge.root_build import build_privileged_command, parse_output_line
 from cursorforge.ui.progress_dialog import BuildProgressDialog
 from cursorforge.ui.size_panel import SizePanel
 from cursorforge.ui.theme_panel import ThemePanel
@@ -83,6 +88,87 @@ class _BuildWorker(QRunnable):
                 output_path=self._output_path,
                 errors=[str(exc)],
             )
+        self.signals.finished.emit(result)
+
+
+class _PrivilegedBuildWorker(QRunnable):
+    def __init__(
+        self,
+        theme: CursorTheme,
+        new_sizes: list[int],
+        output_path: Path,
+    ) -> None:
+        super().__init__()
+        self._theme = theme
+        self._new_sizes = new_sizes
+        self._output_path = output_path
+        self.signals = _BuildSignals()
+
+    def run(self) -> None:
+        command = build_privileged_command(
+            sys.executable,
+            self._theme.cursor_path,
+            self._theme.directory_name,
+            self._output_path,
+            self._new_sizes,
+        )
+        try:
+            process = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.STDOUT,
+                text=True,
+                bufsize=1,
+            )
+        except FileNotFoundError as exc:
+            log.exception("privileged build helper could not start")
+            result = BuildResult(
+                success=False,
+                output_path=self._output_path,
+                errors=[str(exc)],
+            )
+            self.signals.finished.emit(result)
+            return
+
+        result: BuildResult | None = None
+        output_lines: list[str] = []
+        assert process.stdout is not None
+        for raw_line in process.stdout:
+            line = raw_line.rstrip("\n")
+            parsed = parse_output_line(line)
+            if parsed is None:
+                if line.strip():
+                    output_lines.append(line.strip())
+                    log.debug("pkexec helper: %s", line)
+                continue
+
+            kind, payload = parsed
+            if kind == "progress":
+                message, current, total = cast(tuple[str, int, int], payload)
+                self.signals.progress.emit(message, current, total)
+            elif kind == "result":
+                result = cast(BuildResult, payload)
+
+        returncode = process.wait()
+        if result is None:
+            errors = output_lines[-3:] if output_lines else []
+            if not errors:
+                errors = [f"pkexec build exited with status {returncode}."]
+            result = BuildResult(
+                success=False,
+                output_path=self._output_path,
+                errors=errors,
+            )
+        elif returncode != 0 and result.success:
+            result = BuildResult(
+                success=False,
+                output_path=result.output_path,
+                sizes_added=result.sizes_added,
+                cursors_processed=result.cursors_processed,
+                cursors_failed=result.cursors_failed,
+                errors=result.errors or [f"pkexec build exited with status {returncode}."],
+            )
+
         self.signals.finished.emit(result)
 
 
@@ -340,7 +426,20 @@ class MainWindow(QMainWindow):
         )
         self._progress_dialog = dialog
 
-        worker = _BuildWorker(theme, new_sizes, dest)
+        if self._loc_system.isChecked():
+            if shutil.which("pkexec") is None:
+                QMessageBox.critical(
+                    self,
+                    "Build Error",
+                    "pkexec is required to request administrator authorization for system installs.",
+                )
+                self._build_btn.setEnabled(True)
+                self._progress_dialog = None
+                return
+            dialog.update_progress("Requesting administrator authorization…", 0, 100)
+            worker = _PrivilegedBuildWorker(theme, new_sizes, dest)
+        else:
+            worker = _BuildWorker(theme, new_sizes, dest)
         worker.signals.progress.connect(dialog.update_progress)
         worker.signals.finished.connect(self._on_build_finished)
         QThreadPool.globalInstance().start(worker)

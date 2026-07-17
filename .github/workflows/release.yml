@@ -156,16 +156,46 @@ jobs:
 
       - name: Generate release notes
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
           PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          if [ -n "$PREV" ]; then
+            CHANGED_FILES=$(git diff --name-only "${PREV}..${GITHUB_REF_NAME}")
+          else
+            CHANGED_FILES=$(git show --name-only --format="" "$GITHUB_REF_NAME")
+          fi
+
+          note_count=0
           {
-            echo "# Changes:"
+            echo "# What's new"
             echo ""
-            if [ -n "$PREV" ]; then
-              git log --oneline "${PREV}..${GITHUB_REF_NAME}" | sed 's/^[0-9a-f]* /- /'
-            else
-              git log --oneline "$GITHUB_REF_NAME" | sed 's/^[0-9a-f]* /- /'
+            echo "This release focuses on the user-facing improvements below."
+            echo ""
+
+            if echo "$CHANGED_FILES" | grep -q '^README\.md$'; then
+              echo "- Updated the installation guide and download instructions."
+              note_count=$((note_count + 1))
             fi
+
+            if echo "$CHANGED_FILES" | grep -Eq '^(packaging/|\.github/workflows/release\.yml$|cursorforge\.spec$)'; then
+              echo "- Improved the Linux release packages and install options."
+              note_count=$((note_count + 1))
+            fi
+
+            if echo "$CHANGED_FILES" | grep -Eq '^(src/cursorforge/ui/main_window\.py|src/cursorforge/root_build\.py)$'; then
+              echo "- Fixed the system install flow so it asks for administrator authorization before writing to system folders."
+              note_count=$((note_count + 1))
+            fi
+
+            if echo "$CHANGED_FILES" | grep -Eq '^(src/cursorforge/(app|builder|compiler|extractor|scaler|validator|metadata|inspector|dependencies|scanner)\.py|src/cursorforge/ui/)'; then
+              echo "- Fixed cursor-building bugs and polished the app experience."
+              note_count=$((note_count + 1))
+            fi
+
+            if [ "$note_count" -eq 0 ]; then
+              echo "- General bug fixes and stability improvements."
+            fi
+
+            echo ""
+            echo "Download the package that matches your distro from the Releases page."
           } > /tmp/release_notes.md
 
       - name: Create release
