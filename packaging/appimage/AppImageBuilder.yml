@@ -1,0 +1,48 @@
+version: 1
+
+script:
+  - rm -rf AppDir || true
+  - python3 -m pip install ../.. --prefix=/usr --root=AppDir --ignore-installed
+  - install -Dm644 ../../assets/cursorforge.svg AppDir/usr/share/icons/hicolor/scalable/apps/cursorforge.svg
+  - install -Dm644 ../cursorforge.desktop AppDir/usr/share/applications/cursorforge.desktop
+  - install -Dm644 ../cursorforge.desktop AppDir/cursorforge.desktop
+
+AppDir:
+  path: ./AppDir
+
+  app_info:
+    id: io.github.kalzeos.cursorforge
+    name: CursorForge
+    icon: cursorforge
+    version: "${VERSION}"
+    exec: usr/bin/python3.12
+    exec_args: -m cursorforge $@
+
+  apt:
+    arch: amd64
+    sources:
+      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ noble main restricted universe multiverse'
+      - sourceline: 'deb [arch=amd64] http://archive.ubuntu.com/ubuntu/ noble-updates main restricted universe multiverse'
+
+    include:
+      - python3.12
+      - python3-pyside6
+      - libxcb-cursor0
+      - libxkbcommon0
+      - libgl1
+      - libglib2.0-0
+
+    exclude:
+      - adwaita-icon-theme
+      - hicolor-icon-theme
+      - humanity-icon-theme
+
+  runtime:
+    env:
+      PYTHONPATH: '${APPDIR}/usr/lib/python3/dist-packages:${APPDIR}/usr/lib/python3.12/dist-packages:${APPDIR}/usr/local/lib/python3.12/dist-packages'
+
+AppImage:
+  arch: x86_64
+  file_name: CursorForge-${VERSION}-x86_64.AppImage
+  update-information: None
+  sign-key: None

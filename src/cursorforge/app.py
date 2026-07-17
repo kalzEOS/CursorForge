@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtWidgets import QApplication
 
+from cursorforge import __version__
 from cursorforge.dependencies import all_available, check_dependencies
 from cursorforge.paths import LOG_DIR
 from cursorforge.ui.dependency_dialog import DependencyDialog
@@ -30,7 +31,7 @@ def run() -> int:
     _setup_file_logging()
     app = QApplication(sys.argv)
     app.setApplicationName("CursorForge")
-    app.setApplicationVersion("0.1.0")
+    app.setApplicationVersion(__version__)
 
     statuses = check_dependencies()
     if not all_available(statuses):

@@ -1,0 +1,183 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+env:
+  NFPM_VERSION: "2.47.0"
+
+jobs:
+
+  # ── .deb and .rpm ──────────────────────────────────────────────────────────
+  build-packages:
+    name: Build .deb and .rpm
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nfpm
+        run: |
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" \
+            | tar -xz -C /tmp nfpm
+          sudo mv /tmp/nfpm /usr/local/bin/nfpm
+
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i "s/^version: .*/version: \"$VERSION\"/" \
+            packaging/nfpm-deb.yaml packaging/nfpm-rpm.yaml
+          sed -i "s/^__version__ = .*/__version__ = \"$VERSION\"/" \
+            src/cursorforge/__init__.py
+          sed -i "s/^version = .*/version = \"$VERSION\"/" \
+            pyproject.toml
+
+      - name: Build
+        run: |
+          ./packaging/build-packages.sh deb
+          ./packaging/build-packages.sh rpm
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb-rpm
+          path: dist/packages/
+
+  # ── Arch (.pkg.tar.zst) ────────────────────────────────────────────────────
+  build-arch:
+    name: Build Arch package
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    steps:
+      - name: Install base tools
+        run: pacman -Sy --noconfirm git curl tar python gettext
+
+      - uses: actions/checkout@v4
+
+      - name: Install nfpm
+        run: |
+          curl -fsSL "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_Linux_x86_64.tar.gz" \
+            | tar -xz -C /tmp nfpm
+          mv /tmp/nfpm /usr/bin/nfpm
+
+      - name: Set version and build
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i "s/^version: .*/version: \"$VERSION\"/" packaging/nfpm-arch.yaml
+          sed -i "s/^__version__ = .*/__version__ = \"$VERSION\"/" \
+            src/cursorforge/__init__.py
+          ./packaging/build-packages.sh arch
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: dist/packages/
+
+  # ── AppImage ───────────────────────────────────────────────────────────────
+  build-appimage:
+    name: Build AppImage
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set version from tag
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          sed -i "s/^__version__ = .*/__version__ = \"$VERSION\"/" \
+            src/cursorforge/__init__.py
+          sed -i "s/^version = .*/version = \"$VERSION\"/" \
+            pyproject.toml
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/pyproject.toml') }}
+
+      - name: Install dependencies
+        run: pip install pyinstaller PySide6 .
+
+      - name: Build with PyInstaller
+        run: |
+          python -m PyInstaller \
+            --onedir \
+            --name cursorforge \
+            --noconfirm \
+            --distpath dist/pyinstaller \
+            --workpath /tmp/pyinstaller-build \
+            --collect-all cursorforge \
+            src/cursorforge/__main__.py
+
+      - name: Assemble AppDir
+        run: |
+          mkdir -p AppDir
+          cp -r dist/pyinstaller/cursorforge/. AppDir/
+          cp packaging/cursorforge.desktop AppDir/
+          cp assets/cursorforge.svg AppDir/
+          printf '#!/bin/sh\nHERE="$(dirname "$(readlink -f "$0")")"\nexec "$HERE/cursorforge" "$@"\n' \
+            > AppDir/AppRun
+          chmod +x AppDir/AppRun
+
+      - name: Build AppImage
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          mkdir -p dist/packages
+          wget -q https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run \
+            AppDir "dist/packages/CursorForge-${VERSION}-x86_64.AppImage"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: dist/packages/
+
+  # ── GitHub Release ─────────────────────────────────────────────────────────
+  release:
+    name: Create GitHub Release
+    needs: [build-packages, build-arch, build-appimage]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          merge-multiple: true
+
+      - name: Generate release notes
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          PREV=$(git describe --tags --abbrev=0 "${GITHUB_REF_NAME}^" 2>/dev/null || echo "")
+          {
+            echo "# Changes:"
+            echo ""
+            if [ -n "$PREV" ]; then
+              git log --oneline "${PREV}..${GITHUB_REF_NAME}" | sed 's/^[0-9a-f]* /- /'
+            else
+              git log --oneline "$GITHUB_REF_NAME" | sed 's/^[0-9a-f]* /- /'
+            fi
+          } > /tmp/release_notes.md
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          PRERELEASE=""
+          if [[ "$GITHUB_REF_NAME" == *"-beta"* || "$GITHUB_REF_NAME" == *"-alpha"* || "$GITHUB_REF_NAME" == *"-rc"* ]]; then
+            PRERELEASE="--prerelease"
+          fi
+          gh release create "$GITHUB_REF_NAME" \
+            --title "CursorForge ${GITHUB_REF_NAME#v}" \
+            --notes-file /tmp/release_notes.md \
+            $PRERELEASE \
+            artifacts/*.{deb,rpm,zst,AppImage}

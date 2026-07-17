@@ -1,0 +1,9 @@
+[Desktop Entry]
+Name=CursorForge
+Comment=Add extra sizes to installed Xcursor themes
+Exec=cursorforge
+Icon=cursorforge
+Type=Application
+Categories=Settings;Utility;
+Terminal=false
+StartupWMClass=cursorforge

@@ -1,0 +1,43 @@
+name: cursorforge
+version: "0.1.0"
+release: "1"
+arch: noarch
+platform: linux
+maintainer: "kalzEOS <kalzwayed@gmail.com>"
+description: |
+  Add extra sizes to installed Xcursor themes.
+  CursorForge reads a theme already on your system, generates missing sizes
+  using ImageMagick, and compiles a new Xcursor theme containing both the
+  original and newly generated sizes. The source theme is never modified.
+vendor: kalzEOS
+homepage: https://github.com/kalzEOS/CursorForge
+license: GPL-3.0-or-later
+
+# Targets Fedora 40+ (Python 3.12).
+contents:
+  - src: ../src/cursorforge/
+    dst: /usr/lib/python3.12/site-packages/cursorforge/
+    type: tree
+
+  - src: bin/cursorforge
+    dst: /usr/bin/cursorforge
+    file_info:
+      mode: 0755
+
+  - src: cursorforge.desktop
+    dst: /usr/share/applications/cursorforge.desktop
+
+  - src: ../assets/cursorforge.svg
+    dst: /usr/share/icons/hicolor/scalable/apps/cursorforge.svg
+
+  - src: ../LICENSE
+    dst: /usr/share/licenses/cursorforge/LICENSE
+
+overrides:
+  rpm:
+    depends:
+      - python3 >= 3.12
+      - python3-pyside6
+      - xcur2png
+      - xorg-x11-apps
+      - ImageMagick
